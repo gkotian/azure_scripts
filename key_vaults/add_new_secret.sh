@@ -26,12 +26,12 @@ if FileEndsWithNewline ${SECRET_FILE}; then
     fi
 fi
 
-read -p "Enter the name of the KeyVault: " KEYVAULT_NAME
+read -p "Enter the name of the key vault: " KEY_VAULT
 read -p "Enter the name of the secret to be added: " SECRET_NAME
 read -p "Enter the content-type (optional): " CONTENT_TYPE
 
 az keyvault secret set \
-    --vault-name=${KEYVAULT_NAME} \
+    --vault-name=${KEY_VAULT} \
     --file=${SECRET_FILE} \
     --name=${SECRET_NAME} \
     --content-type=${CONTENT_TYPE}

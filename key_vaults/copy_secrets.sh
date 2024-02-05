@@ -9,8 +9,8 @@ SECRETS_TO_COPY=(
     SecretTwo
     SecretThree
 )
-SOURCE_KEYVAULT=srckeyvault
-TARGET_KEYVAULT=dstkeyvault
+SOURCE_KEY_VAULT=srckeyvault
+TARGET_KEY_VAULT=dstkeyvault
 
 # We cannot pre-create a temporary file and use that for all the secrets because
 # `az keyvault secret download` will fail if the file already exists.
@@ -24,13 +24,13 @@ fi
 for S in ${SECRETS_TO_COPY[@]}; do
     az keyvault secret download \
         --file ${TMP_FILE} \
-        --vault-name ${SOURCE_KEYVAULT} \
+        --vault-name ${SOURCE_KEY_VAULT} \
         --name ${S}
 
     read -p "Enter the content-type of '${S}' (optional): " CONTENT_TYPE
 
     az keyvault secret set \
-        --vault-name=${TARGET_KEYVAULT} \
+        --vault-name=${TARGET_KEY_VAULT} \
         --file=${TMP_FILE} \
         --name=${S} \
         --content-type=${CONTENT_TYPE}

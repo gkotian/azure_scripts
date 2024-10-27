@@ -18,11 +18,11 @@ if [ ! -f ${SECRET_FILE} ]; then
 fi
 
 if FileEndsWithNewline ${SECRET_FILE}; then
-    echo "WARNING: '${SECRET_FILE}' ends with a newline character."
-    echo "If you answer the question below in the affirmative, the newline character will be part of the secret value (which would be VERY unusual)."
-    read -p "Should the secret really contain a newline at the end? [y/N]: " YES_OR_NO
-    if [ -z "${YES_OR_NO}" ] || [[ "${YES_OR_NO}" != [yY] ]]; then
+    if [ $# -gt 0 ] && [ "${1}" = "--do-not-remove-trailing-newline" ]; then
+        echo "Preserving trailing newline character in ${SECRET_FILE} (it will be part of the secret value)"
+    else
         truncate -s -1 ${SECRET_FILE}
+        echo "Truncated trailing newline character in ${SECRET_FILE} (Use --do-not-remove-trailing-newline to avoid this behaviour)"
     fi
 fi
 

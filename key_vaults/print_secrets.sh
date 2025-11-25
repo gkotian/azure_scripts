@@ -21,3 +21,7 @@ for S in ${SECRETS[@]}
 do
     echo "    ${S}: `az keyvault secret show --vault-name ${KEY_VAULT} --name ${S} | jq --raw-output '.value'`"
 done
+
+# Save a record of past searches
+PAST_SEARCHES_FILE="/var/tmp/print_secrets_past_executions.log"
+echo "${KEY_VAULT} : ${SECRETS_CSV}" >> ${PAST_SEARCHES_FILE}

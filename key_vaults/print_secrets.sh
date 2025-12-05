@@ -21,17 +21,7 @@ if [ -z "${KEY_VAULTS_CSV}" ]; then
     echo "No key vault specified. Aborting."
     exit 1
 fi
-
-read -p "Enter the secret(s) whose value(s) are to be printed (use commas to separate multiple secrets): " SECRETS_CSV
-if [ -z "${SECRETS_CSV}" ]; then
-    echo "No secrets specified. Aborting."
-    exit 1
-fi
-
 IFS=',' read -r -a KEY_VAULTS_ARRAY <<< "${KEY_VAULTS_CSV}"
-IFS=',' read -r -a SECRETS_ARRAY <<< "${SECRETS_CSV}"
-SECRETS_ARRAY=($(printf "%s\n" "${SECRETS_ARRAY[@]}" | xargs -n1 | sort -u)) # Trim whitespace and remove duplicates
-
 RESOLVED_KEY_VAULTS=()
 for KV in "${KEY_VAULTS_ARRAY[@]}"; do
     KV=$(echo "${KV}" | xargs)   # Trim whitespace
@@ -39,6 +29,14 @@ for KV in "${KEY_VAULTS_ARRAY[@]}"; do
     RESOLVED_KEY_VAULTS+=("$(resolve_key_vault "${KV}")") # Resolve abbreviations
 done
 RESOLVED_KEY_VAULTS=($(printf "%s\n" "${RESOLVED_KEY_VAULTS[@]}" | sort -u)) # Remove duplicates
+
+read -p "Enter the secret(s) whose value(s) are to be printed (use commas to separate multiple secrets): " SECRETS_CSV
+if [ -z "${SECRETS_CSV}" ]; then
+    echo "No secrets specified. Aborting."
+    exit 1
+fi
+IFS=',' read -r -a SECRETS_ARRAY <<< "${SECRETS_CSV}"
+SECRETS_ARRAY=($(printf "%s\n" "${SECRETS_ARRAY[@]}" | xargs -n1 | sort -u)) # Trim whitespace and remove duplicates
 
 PAST_SEARCHES_FILE="/var/tmp/print_secrets_past_executions.log"
 

@@ -77,16 +77,22 @@ echo "here are the local testing credentials for ${APP_NAME}:"
 echo "    ClientId: ${APP_ID}"
 echo "    ClientSecret (valid until ${VALID_UNTIL_DATE}): ${SHORT_LIVED_SECRET}"
 
-# TODO: confirm if old expired secrets should be deleted, and if so, do it
-# automatically
 az ad app credential list \
     --id=${APP_ID} > ${TMP_FILE} 2>/dev/null
-TMP_FILE2=$(mktemp)
-jq --arg now "$(date --utc +"%Y-%m-%dT%H:%M:%SZ")" '.[] | select(.endDateTime < $now) | {keyId, displayName}' ${TMP_FILE} > ${TMP_FILE2}
-echo ""
-echo "Old expired secrets:"
-cat ${TMP_FILE2}
-echo "Delete using: az ad app credential delete --id=${APP_ID} --key-id=<keyId>"
-rm -f ${TMP_FILE2}
+EXPIRED_KEY_IDS=$(jq --raw-output \
+    --arg now "$(date --utc +"%Y-%m-%dT%H:%M:%SZ")" \
+    '.[] | select(.endDateTime < $now) | .keyId' ${TMP_FILE})
+
+if [ -n "${EXPIRED_KEY_IDS}" ]; then
+    echo ""
+    echo "Deleting old expired secrets..."
+    for KEY_ID in ${EXPIRED_KEY_IDS}; do
+        echo "  Deleting ${KEY_ID}..."
+        az ad app credential delete \
+            --id=${APP_ID} \
+            --key-id=${KEY_ID} 2>/dev/null
+    done
+    echo "Done."
+fi
 
 rm -f ${TMP_FILE}

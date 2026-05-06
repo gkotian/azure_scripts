@@ -37,14 +37,15 @@ def add_permission(app_id, scope, role, tmp_dir):
     az(*args, file=rsp_file)
 
 
-def confirm_planned_changes(app_id, dev_or_prod, resource_group, namespace,
-        assignments, is_human_user):
+def confirm_planned_changes(app_id, dev_or_prod, access_type, resource_group,
+        namespace, assignments, is_human_user):
     principal_type = 'human user' if is_human_user else 'app registration'
 
     print()
     print("Summary of planned changes:")
     print(f"  Assignee: {app_id} ({principal_type})")
     print(f"  Environment: {dev_or_prod}")
+    print(f"  Permission type: {access_type}")
     print(f"  Resource group: {resource_group}")
     print(f"  Service bus namespace: {namespace}")
     print("  Role assignments to create:")
@@ -62,13 +63,23 @@ def get_service_bus_details(dev_or_prod):
     return "TODO", "TODO", "TODO"
 
 
-def run(app_id, dev_or_prod, topics, is_human_user=False):
+def run(app_id, dev_or_prod, topics, is_human_user=False,
+        access_type='receiver'):
     subscription_id, resource_group, namespace = get_service_bus_details(
         dev_or_prod)
+
+    if access_type not in ('receiver', 'sender'):
+        raise ValueError("access_type must be 'receiver' or 'sender'.")
 
     # Use topics = ['*'] to grant namespace-wide receiver permission.
     # This is only allowed for human users on the dev service bus.
     namespace_wide_receiver = topics == ['*']
+    if '*' in topics and not namespace_wide_receiver:
+        raise ValueError("'*' cannot be combined with other topics.")
+    if namespace_wide_receiver and access_type != 'receiver':
+        raise ValueError(
+            "Namespace-wide permission (topics=['*']) is only supported for "
+            "receiver access.")
     if namespace_wide_receiver:
         if not is_human_user:
             raise ValueError(
@@ -82,44 +93,45 @@ def run(app_id, dev_or_prod, topics, is_human_user=False):
     tmp_dir = '/tmp'
 
     namespace_scope = f'/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ServiceBus/namespaces/{namespace}'
-    namespace_role = 'Reader'
-    assignments = [
-        (namespace_role, f"service bus namespace '{namespace}'",
-            namespace_scope),
-    ]
+    assignments = []
 
-    receiver_role = 'Azure Service Bus Data Receiver'
-
-    if namespace_wide_receiver:
+    if access_type == 'receiver':
+        namespace_role = 'Reader'
         assignments.append(
-            (receiver_role, f"service bus namespace '{namespace}' (all topics)",
+            (namespace_role, f"service bus namespace '{namespace}'",
                 namespace_scope))
+
+        receiver_role = 'Azure Service Bus Data Receiver'
+        if namespace_wide_receiver:
+            assignments.append(
+                (receiver_role,
+                    f"service bus namespace '{namespace}' (all topics)",
+                    namespace_scope))
+        else:
+            for topic in topics:
+                topic_scope = namespace_scope + f'/topics/{topic}'
+                assignments.append(
+                    (receiver_role,
+                        f"topic '{topic}' under service bus namespace "
+                        f"'{namespace}'",
+                        topic_scope))
     else:
+        sender_role = 'Azure Service Bus Data Sender'
         for topic in topics:
             topic_scope = namespace_scope + f'/topics/{topic}'
             assignments.append(
-                (receiver_role,
+                (sender_role,
                     f"topic '{topic}' under service bus namespace '{namespace}'",
                     topic_scope))
 
-    if not confirm_planned_changes(app_id, dev_or_prod, resource_group,
-            namespace, assignments, is_human_user):
+    if not confirm_planned_changes(app_id, dev_or_prod, access_type,
+            resource_group, namespace, assignments, is_human_user):
         print("Cancelled.")
         return
 
-    add_permission(app_id, namespace_scope, namespace_role, tmp_dir)
-    print(f"Added role '{namespace_role}' for service bus namespace '{namespace}'")
-
-    if namespace_wide_receiver:
-        add_permission(app_id, namespace_scope, receiver_role, tmp_dir)
-        print(f"Added role '{receiver_role}' for service bus namespace "
-              f"'{namespace}' (all topics)")
-    else:
-        for topic in topics:
-            topic_scope = namespace_scope + f'/topics/{topic}'
-            add_permission(app_id, topic_scope, receiver_role, tmp_dir)
-            print(f"Added role '{receiver_role}' for topic '{topic}' under "
-                  f"service bus namespace '{namespace}'")
+    for role, description, scope in assignments:
+        add_permission(app_id, scope, role, tmp_dir)
+        print(f"Added role '{role}' for {description}")
 
 
 def main():
@@ -140,7 +152,15 @@ def main():
         return
     is_human_user = is_human == 'yes'
 
-    if is_human_user and dev_or_prod == 'dev':
+    access_type = input(
+        "Enter permission type (receiver/sender) [receiver]: ").strip().lower()
+    if not access_type:
+        access_type = 'receiver'
+    if access_type not in ('receiver', 'sender'):
+        print("Error: permission type must be 'receiver' or 'sender'.")
+        return
+
+    if access_type == 'receiver' and is_human_user and dev_or_prod == 'dev':
         prompt = "Enter topic names (comma-separated, or * for all topics): "
     else:
         prompt = "Enter topic names (comma-separated): "
@@ -152,21 +172,16 @@ def main():
         print("Error: '*' cannot be combined with other topics.")
         return
 
+    if '*' in topics and access_type != 'receiver':
+        print("Error: '*' is only supported for receiver permission.")
+        return
+
     if not topics:
         print("No topics specified. Exiting.")
         return
 
-    run(app_id, dev_or_prod, topics, is_human_user)
+    run(app_id, dev_or_prod, topics, is_human_user, access_type)
 
 
 if __name__ == '__main__':
-    # Note that this script currently only supports setting the 'Azure Service
-    # Bus Data Receiver' permission. This involves running at least two 'az role
-    # assignment create' commands - one at the namespace level (which allows
-    # listing the topics in the namespace) and the other for topic(s) itself.
-    # If 'Azure Service Bus Data Sender' permission needs to be given instead,
-    # then only one 'az role assignment create' command needs to be run (only
-    # for the specific topic). This functionality should be implemented in this
-    # script in the future.
-
     main()

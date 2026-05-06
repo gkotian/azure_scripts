@@ -37,22 +37,48 @@ def add_permission(app_id, scope, role, tmp_dir):
     az(*args, file=rsp_file)
 
 
+def get_assignee_display_name(app_id, is_human_user):
+    if is_human_user:
+        lookup_commands = [
+            ('ad', 'user', 'show', f'--id={app_id}'),
+        ]
+    else:
+        lookup_commands = [
+            ('ad', 'app', 'show', f'--id={app_id}'),
+            ('ad', 'sp', 'show', f'--id={app_id}'),
+        ]
+
+    for lookup_command in lookup_commands:
+        try:
+            display_name = az(
+                *lookup_command, '--query=displayName', '--output=tsv')
+        except AZError:
+            continue
+
+        display_name = (display_name or '').strip()
+        if display_name:
+            return display_name
+
+    return '<name unavailable>'
+
+
 def confirm_planned_changes(app_id, dev_or_prod, access_type, resource_group,
         namespace, assignments, is_human_user):
     principal_type = 'human user' if is_human_user else 'app registration'
+    display_name = get_assignee_display_name(app_id, is_human_user)
 
     print()
     print("Summary of planned changes:")
-    print(f"  Assignee: {app_id} ({principal_type})")
+    print(f"  Assignee: {app_id} ({principal_type} '{display_name}')")
     print(f"  Environment: {dev_or_prod}")
     print(f"  Permission type: {access_type}")
     print(f"  Resource group: {resource_group}")
     print(f"  Service bus namespace: {namespace}")
     print("  Role assignments to create:")
-    for role, description, scope in assignments:
-        print(f"    - Role: {role}")
-        print(f"      Target: {description}")
-        print(f"      Scope: {scope}")
+    for index, (role, summary_target, _success_target, _scope) in enumerate(
+            assignments, start=1):
+        print(f"    {index}. Role: {role}")
+        print(f"       Target: {summary_target}")
     print()
 
     answer = input("Proceed? [Y/n]: ").strip().lower()
@@ -98,13 +124,14 @@ def run(app_id, dev_or_prod, topics, is_human_user=False,
     if access_type == 'receiver':
         namespace_role = 'Reader'
         assignments.append(
-            (namespace_role, f"service bus namespace '{namespace}'",
-                namespace_scope))
+            (namespace_role, "the service bus namespace itself",
+                f"service bus namespace '{namespace}'", namespace_scope))
 
         receiver_role = 'Azure Service Bus Data Receiver'
         if namespace_wide_receiver:
             assignments.append(
                 (receiver_role,
+                    "the service bus namespace (all topics)",
                     f"service bus namespace '{namespace}' (all topics)",
                     namespace_scope))
         else:
@@ -112,6 +139,7 @@ def run(app_id, dev_or_prod, topics, is_human_user=False,
                 topic_scope = namespace_scope + f'/topics/{topic}'
                 assignments.append(
                     (receiver_role,
+                        f"topic '{topic}' under the service bus namespace",
                         f"topic '{topic}' under service bus namespace "
                         f"'{namespace}'",
                         topic_scope))
@@ -121,6 +149,7 @@ def run(app_id, dev_or_prod, topics, is_human_user=False,
             topic_scope = namespace_scope + f'/topics/{topic}'
             assignments.append(
                 (sender_role,
+                    f"topic '{topic}' under the service bus namespace",
                     f"topic '{topic}' under service bus namespace '{namespace}'",
                     topic_scope))
 
@@ -129,9 +158,9 @@ def run(app_id, dev_or_prod, topics, is_human_user=False,
         print("Cancelled.")
         return
 
-    for role, description, scope in assignments:
+    for role, _summary_target, success_target, scope in assignments:
         add_permission(app_id, scope, role, tmp_dir)
-        print(f"Added role '{role}' for {description}")
+        print(f"Added role '{role}' for {success_target}")
 
 
 def main():
